@@ -85,7 +85,7 @@ add_executable(${PROJECT_NAME}_node
     ""
     )
 
-add_dependencies(${PROJECT_HUB}_node ${PROJECT_NAME}_generate_messages_cpp)
+add_dependencies(${PROJECT_NAME}_node ${PROJECT_NAME}_generate_messages_cpp)
 #---------------------------------------------------------------------------------------
 # precompile macro and compile option
 #---------------------------------------------------------------------------------------
