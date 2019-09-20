@@ -1,11 +1,15 @@
+<?xml version="1.0"?>
 <launch>
-	
-	<arg name="bd_list" default="100000000000000"/>
+	<!-- lidars: -->
+	<!-- <arg name="bd_list" default="0TFDFG700600061&amp;0TFDFCE00500881&amp;0TFDFG700600341&amp;0TFDFCE00504361"/> -->
 
-    <node name="livox_lidar_publisher" pkg="display_lidar_points" 
-	      type="display_lidar_points_node" required="true"
-	      output="screen" args="$(arg bd_list)"/>
 
-	<node name="rviz" pkg="rviz" type="rviz" respawn="true"
-	      args="-d $(find display_lidar_points)/config/display_lidar_points.rviz"/>
+	          <node name="livox_lidar_publisher" pkg="display_lidar_points"
+          	      type="display_lidar_points_node" required="true"
+          	      output="screen">
+          	<rosparam command="load" file="$(find display_lidar_points)/config/sensors.yaml" />
+               </node>
+
+<!-- 	<node name="rviz" pkg="rviz" type="rviz" respawn="true"
+	      args="-d $(find display_lidar_points)/config/display_lidar_points.rviz"/> -->
 </launch>

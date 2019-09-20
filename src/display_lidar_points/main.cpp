@@ -36,6 +36,8 @@
 #include <ros/ros.h>
 #include <pcl_ros/point_cloud.h>
 
+#include <xmlrpcpp/XmlRpcException.h>
+
 #define BUFFER_POINTS                   (32*1024) // must be 2^n
 #define POINTS_PER_FRAME                5000      // must < BUFFER_POINTS
 #define PACKET_GAP_MISS_TIME            (1500000) // 1.5ms
@@ -64,7 +66,8 @@ typedef struct {
 
 PointCloudQueue point_cloud_queue_pool[kMaxLidarCount];
 /* for global publisher use */
-ros::Publisher cloud_pub;
+std::vector<ros::Publisher> cloud_pubs;
+std::vector<std::string> frame_ids;
 
 
 /* for device connect use ----------------------------------------------------------------------- */
@@ -79,6 +82,7 @@ typedef struct {
   DeviceState device_state;
   DeviceInfo info;
   LidarPacketStatistic statistic_info;
+  int i;
 } DeviceItem;
 
 DeviceItem lidars[kMaxLidarCount];
@@ -140,15 +144,16 @@ uint32_t QueueIsEmpty(PointCloudQueue *queue) {
 }
 
 /* for pointcloud convert process */
-static uint32_t PublishPointcloudData(PointCloudQueue *queue, uint32_t num) {
+static uint32_t PublishPointcloudData(PointCloudQueue *queue, uint32_t num, unsigned int handler) {
   /* init point cloud data struct */
   PointCloud::Ptr cloud (new PointCloud);
-  cloud->header.frame_id = "livox_frame";
+  cloud->header.frame_id = frame_ids[lidars[handler].i];//"livox_frame";
   cloud->height = 1;
   cloud->width = num;
 
   LivoxPoint points;
-  for (unsigned int i = 0; i < num; i++) {
+  for (unsigned int i = 0; i < num; i++)
+  {
     QueuePop(queue, &points);
 
     pcl::PointXYZI point;
@@ -159,7 +164,7 @@ static uint32_t PublishPointcloudData(PointCloudQueue *queue, uint32_t num) {
     cloud->points.push_back(point);
   }
 
-  cloud_pub.publish(cloud);
+  cloud_pubs[lidars[handler].i].publish(cloud);
 }
 
 static void PointCloudConvert(LivoxPoint *p_dpoint, LivoxRawPoint *p_raw_point) {
@@ -219,12 +224,16 @@ void GetLidarData(uint8_t handle, LivoxEthPacket *data, uint32_t data_num, void 
   return;
 }
 
-void PollPointcloudData(void) {
-  for (int i = 0; i < kMaxLidarCount; i++) {
+void PollPointcloudData(void)
+{
+//  for (int i = 0; i < kMaxLidarCount; i++)
+  for (int i = 0; i < kMaxLidarCount; i++)
+  {
     PointCloudQueue *p_queue  = &point_cloud_queue_pool[i];
+
     if (QueueUsedSize(p_queue) > POINTS_PER_FRAME) {
       //ROS_DEBUG("%d %d %d %d\r\n", i, p_queue->rd_idx, p_queue->wr_idx, QueueUsedSize(p_queue));
-      PublishPointcloudData(p_queue, POINTS_PER_FRAME);
+      PublishPointcloudData(p_queue, POINTS_PER_FRAME, i);
     }
   }
 }
@@ -340,14 +349,17 @@ void OnDeviceBroadcast(const BroadcastDeviceInfo *info) {
 
   ROS_INFO("Receive Broadcast Code %s", info->broadcast_code);
   bool found = false;
-
-  for (int i = 0; i < total_broadcast_code.size(); ++i) {
-    if (strncmp(info->broadcast_code, total_broadcast_code[i].c_str(), kBroadcastCodeSize) == 0) {
+  int i = 0;
+  for (; i < total_broadcast_code.size(); ++i)
+  {
+    if (strncmp(info->broadcast_code, total_broadcast_code[i].c_str(), kBroadcastCodeSize) == 0)
+    {
       found = true;
       break;
     }
   }
-  if (!found) {
+  if (!found)
+  {
     ROS_INFO("Not in the broacast_code_list, please add it to if want to connect!");
     return;
   }
@@ -358,29 +370,104 @@ void OnDeviceBroadcast(const BroadcastDeviceInfo *info) {
   if (result == kStatusSuccess && handle < kMaxLidarCount) {
     SetDataCallback(handle, GetLidarData, NULL);
     lidars[handle].handle = handle;
+    lidars[handle].i = i;
     lidars[handle].device_state = kDeviceStateDisconnect;
   }
 }
 
 
-int main(int argc, char **argv) {
-  if( ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Debug) ) {
+int main(int argc, char **argv) 
+{
+  if( ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Debug) )
+  {
     ros::console::notifyLoggerLevelsChanged();
   }
+// ARTI hack start
+
+  /* ros related */
+  ros::init(argc, argv, "livox_lidar_publisher");
+  ros::NodeHandle livox_node("~");
 
   ROS_INFO("Livox-SDK ros demo");
 
   PointCloudPoolInit();
-  if (!Init()) {
+  if (!Init())
+  {
     ROS_FATAL("Livox-SDK init fail!");
     return -1;
   }
 
-  add_local_broadcast_code();
-  if (argc >= BD_ARGC_NUM) {
-    ROS_INFO("Commandline input %s", argv[BD_ARGV_POS]);
-    add_commandline_broadcast_code(argv[BD_ARGV_POS]);
+
+  ROS_WARN_STREAM("start");
+  XmlRpc::XmlRpcValue config;
+  if (!livox_node.getParam("sensors", config)) {
+    return -1;
   }
+
+//  ROS_WARN_STREAM(config);
+
+  if (config.getType() != XmlRpc::XmlRpcValue::TypeArray)
+  {
+    throw std::invalid_argument(livox_node.getNamespace() + ": configuration is not a list");
+  }
+
+  for (int i = 0; i < config.size(); ++i)
+  {
+    XmlRpc::XmlRpcValue sensor_config = config[i];
+    ROS_WARN_STREAM(sensor_config);
+
+    if (sensor_config.getType() != XmlRpc::XmlRpcValue::TypeStruct)
+    {
+      throw std::invalid_argument(livox_node.getNamespace() + ": configuration is not a struct");
+    }
+    // check frame_id
+    if (!sensor_config.hasMember("frame_id"))
+    {
+      throw std::invalid_argument(livox_node.getNamespace() + ": configuration has no member 'frame_id'");
+    }
+    frame_ids.push_back(sensor_config["frame_id"]);
+
+    // check topic
+    if (!sensor_config.hasMember("topic"))
+    {
+      throw std::invalid_argument(livox_node.getNamespace() + ": configuration has no member 'topic'");
+    }
+    cloud_pubs.push_back(livox_node.advertise<PointCloud>(sensor_config["topic"], 10));
+
+
+    // check serial_nr
+    if (!sensor_config.hasMember("serial_nr"))
+    {
+      throw std::invalid_argument(livox_node.getNamespace() + ": configuration has no member 'serial_nr'");
+    }
+    add_broadcast_code(static_cast<std::string>(sensor_config["serial_nr"]).c_str());
+
+  }
+
+
+
+
+
+  ROS_WARN_STREAM("done");
+
+
+//  frame_ids.push_back("test1");
+//  frame_ids.push_back("test2");
+//  frame_ids.push_back("test3");
+
+//  cloud_pubs.push_back(livox_node.advertise<PointCloud>("lidar1", 10));
+//  cloud_pubs.push_back(livox_node.advertise<PointCloud>("lidar2", 10));
+//  cloud_pubs.push_back(livox_node.advertise<PointCloud>("lidar3", 10));
+
+  // ARTI hack end
+
+
+
+
+
+//  add_broadcast_code("1LVDG1F006SZ5P1");
+//  add_broadcast_code("1LVDG1F006SZ5P2");
+//  add_broadcast_code("1LVDG1F006SZ5P3");
 
   memset(lidars, 0, sizeof(lidars));
   SetBroadcastCallback(OnDeviceBroadcast);
@@ -391,14 +478,10 @@ int main(int argc, char **argv) {
     return -1;
   }
 
-  /* ros related */
-  ros::init(argc, argv, "livox_lidar_publisher");
-  ros::NodeHandle livox_node;
-  cloud_pub = livox_node.advertise<PointCloud>("livox/lidar", POINTS_PER_FRAME);
-
   ros::Time::init();
   ros::Rate r(500); // 500 hz
-  while (ros::ok()) {
+  while (ros::ok())
+  {
     PollPointcloudData();
     r.sleep();
   }
