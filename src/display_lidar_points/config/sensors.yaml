@@ -1,31 +1,7 @@
 sensors:
-- frame_id: livox1_left_low
-  topic: livox_low_left
+- frame_id: livox1
+  topic: livox1
   serial_nr: 0TFDFG700600061
-- frame_id: livox3_low_base
-  topic: livox_low_center_left
+- frame_id: livox2
+  topic: livox2
   serial_nr: 1LVDG1F006SZ5P1
-- frame_id: livox3_low_base
-  topic: livox_low_center_middle
-  serial_nr: 1LVDG1F006SZ5P2
-- frame_id: livox3_low_base
-  topic: livox_low_center_right
-  serial_nr: 1LVDG1F006SZ5P3
-- frame_id: livox1_right_low
-  topic: livox_low_right
-  serial_nr: 0TFDFG700600341
-- frame_id: livox1_left_high
-  topic: livox_high_left
-  serial_nr: 0TFDFCE00504361
-- frame_id: livox3_high_base
-  topic: livox_high_center_left
-  serial_nr: 1LVDG1F006E94F1
-- frame_id: livox3_high_base
-  topic: livox_high_center_middle
-  serial_nr: 1LVDG1F006E94F2
-- frame_id: livox3_high_base
-  topic: livox_high_center_right
-  serial_nr: 1LVDG1F006E94F3
-- frame_id: livox1_right_high
-  topic: livox_high_right
-  serial_nr: 0TFDFCE00500881
