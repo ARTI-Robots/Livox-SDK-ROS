@@ -1,7 +1,5 @@
 sensors:
 - frame_id: livox1
   topic: livox1
-  serial_nr: 0TFDFG700600061
-- frame_id: livox2
-  topic: livox2
-  serial_nr: 1LVDG1F006SZ5P1
+  serial_nr: 0TFDFG700600011
+max_frequency: 12.0
